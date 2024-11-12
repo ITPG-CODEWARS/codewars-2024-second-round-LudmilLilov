@@ -1,0 +1,500 @@
+<html>
+<head>
+    <title>URL Shortener</title>
+    <script src="https://unpkg.com/react/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
+    
+</head>
+<body class="bg-gradient-to-r from-green-500 to-red-600 font-roboto min-h-screen flex items-center justify-center">
+    <div id="root" class="w-full max-w-4xl"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+ 
+        const App = () => {
+            const [originalUrl, setOriginalUrl] = useState('');
+            const [customAlias, setCustomAlias] = useState('');
+            const [shortenedUrls, setShortenedUrls] = useState([]);
+            const [length, setLength] = useState(6);
+            const [maxUses, setMaxUses] = useState(1);
+            const [expiryDate, setExpiryDate] = useState('');
+            const [useMaxUses, setUseMaxUses] = useState(false);
+            const [useExpiryDate, setUseExpiryDate] = useState(false);
+            const [message, setMessage] = useState('');
+            const [user, setUser] = useState(null);
+            const [users, setUsers] = useState([]);
+            const [username, setUsername] = useState('');
+            const [password, setPassword] = useState('');
+            const [isLogin, setIsLogin] = useState(true);
+            const [suggestedUsernames, setSuggestedUsernames] = useState([]);
+            const [qrCodePopup, setQrCodePopup] = useState(null);
+            const [showLogin, setShowLogin] = useState(false);
+            const [showMoreOptions, setShowMoreOptions] = useState(false);
+ 
+            useEffect(() => {
+                const storedUsers = JSON.parse(localStorage.getItem('users')) || [];
+                setUsers(storedUsers);
+            }, []);
+ 
+            useEffect(() => {
+                if (user) {
+                    const storedUrls = JSON.parse(localStorage.getItem(user.username)) || [];
+                    setShortenedUrls(storedUrls);
+                }
+            }, [user]);
+ 
+            useEffect(() => {
+                if (user) {
+                    localStorage.setItem(user.username, JSON.stringify(shortenedUrls));
+                }
+            }, [shortenedUrls, user]);
+ 
+            const handleShortenUrl = async () => {
+    const existingEntry = shortenedUrls.find(url => url.originalUrl === originalUrl);
+    if (existingEntry) {
+        setMessage('This URL already exists.');
+        return;
+    }
+ 
+    const randomAlias = Math.random().toString(36).substring(2, 2 + Number(length));
+    const alias = customAlias || randomAlias;
+ 
+    // Пращане на заявка за обраотване на URL
+    const response = await fetch('http://localhost:3001/shorten', { 
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ originalUrl, alias }),
+    });
+ 
+    const data = await response.json();
+    const shortUrl = data.shortUrl;
+ 
+    // Генериране на QR код и обработка на състоянето на updates...
+    const canvas = document.createElement('canvas');
+    QRCode.toCanvas(canvas, originalUrl, { width: 100, height: 100 }, (error) => {
+        if (error) console.error(error);
+    });
+ 
+    const qrCodeUrl = canvas.toDataURL();
+ 
+    const newEntry = {
+        originalUrl,
+        shortUrl,
+        qrCodeUrl,
+        clickCount: 0,
+        alias,
+        maxUses: useMaxUses ? Number(maxUses) : null,
+        expiryDate: useExpiryDate ? new Date(expiryDate).getTime() : null
+    };
+ 
+    setShortenedUrls([newEntry, ...shortenedUrls]);
+    setOriginalUrl('');
+    setCustomAlias('');
+    setMessage('');
+};
+ 
+ 
+            const downloadQRCode = (qrCodeUrl, alias) => {
+                const link = document.createElement('a');
+                link.href = qrCodeUrl;
+                link.download = `${alias}.png`;
+                link.click();
+            };
+ 
+            const handleLinkClick = (index) => {
+                const updatedUrls = [...shortenedUrls];
+                updatedUrls[index].clickCount += 1;
+                if ((updatedUrls[index].maxUses && updatedUrls[index].clickCount >= updatedUrls[index].maxUses) || 
+                    (updatedUrls[index].expiryDate && new Date().getTime() > updatedUrls[index].expiryDate)) {
+                    updatedUrls.splice(index, 1);
+                }
+                setShortenedUrls(updatedUrls);
+            };
+ 
+            const handleDeleteUrl = (index) => {
+                const updatedUrls = shortenedUrls.filter((_, i) => i !== index);
+                setShortenedUrls(updatedUrls);
+            };
+ 
+            const generateSimilarUsernames = (username) => {
+                const randomSuffix = () => Math.floor(Math.random() * 1000);
+                return [
+                    `${username}${randomSuffix()}`,
+                    `${username}_${randomSuffix()}`,
+                    `${username}.${randomSuffix()}`,
+                    `${username}${randomSuffix()}`
+                ];
+            };
+ 
+            const handleRegister = () => {
+                const existingUser = users.find(u => u.username === username);
+                if (existingUser) {
+                    const similarUsernames = generateSimilarUsernames(username);
+                    setSuggestedUsernames(similarUsernames);
+                    setMessage('Username already exists. Try these:');
+                    return;
+                }
+ 
+                const newUser = { username, password };
+                setUsers([...users, newUser]);
+                localStorage.setItem('users', JSON.stringify([...users, newUser]));
+                setUser(newUser);
+                setUsername('');
+                setPassword('');
+                setMessage('');
+                setSuggestedUsernames([]);
+            };
+ 
+            const handleLogin = () => {
+                const existingUser = users.find(u => u.username === username && u.password === password);
+                if (existingUser) {
+                    setUser(existingUser);
+                    setUsername('');
+                    setPassword('');
+                    setMessage('');
+                    setShowLogin(false);
+                } else {
+                    setMessage('Invalid username or password.');
+                }
+            };
+ 
+            const handleLogout = () => {
+                setUser(null);
+                setShortenedUrls([]);
+            };
+ 
+            const handleQrCodeClick = (qrCodeUrl) => {
+                setQrCodePopup(qrCodeUrl);
+            };
+ 
+            const closeQrCodePopup = () => {
+                setQrCodePopup(null);
+            };
+ 
+            return (
+                <div className="bg-white p-8 rounded-lg shadow-lg w-full relative">
+                    {!showLogin && !user && (
+                        <div className="absolute top-4 right-4 flex space-x-4">
+                            <button
+                                className="bg-blue-500 text-white p-3 rounded"
+                                onClick={() => {
+                                    setShowLogin(true);
+                                    setIsLogin(true);
+                                }}
+                            >
+                                Login
+                            </button>
+                            <button
+                                className="bg-green-500 text-white p-3 rounded"
+                                onClick={() => {
+                                    setShowLogin(true);
+                                    setIsLogin(false);
+                                }}
+                            >
+                                Register
+                            </button>
+                        </div>
+                    )}
+                    {showLogin && !user ? (
+                        <div className="bg-white p-6 rounded-lg shadow-md mb-4">
+                            <h1 className="text-3xl font-bold mb-6 text-center">{isLogin ? 'Login' : 'Register'}</h1>
+                            <div className="mb-4">
+                                <label className="block text-gray-700">Username</label>
+                                <input
+                                    type="text"
+                                    className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                />
+                                {message && <p className="text-red-500 mt-2">{message}</p>}
+                                {suggestedUsernames.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap">
+                                        {suggestedUsernames.map((suggestion, index) => (
+                                            <button
+                                                key={index}
+                                                className="bg-gray-200 text-black p-2 rounded mr-2 mb-2"
+                                                onClick={() => setUsername(suggestion)}
+                                            >
+                                                {suggestion}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="mb-4">
+                                <label className="block text-gray-700">Password</label>
+                                <input
+                                    type="password"
+                                    className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <button
+                                    className="bg-blue-500 text-white p-3 rounded w-full hover:bg-blue-600 transition duration-300"
+                                    onClick={isLogin ? handleLogin : handleRegister}
+                                >
+                                    {isLogin ? 'Login' : 'Register'}
+                                </button>
+                                <button
+                                    className="ml-4 bg-blue-500 text-white p-3 rounded hover:bg-blue-600 transition duration-300"
+                                    onClick={() => {
+                                        setIsLogin(!isLogin);
+                                        setMessage('');
+                                        setSuggestedUsernames([]);
+                                    }}
+                                >
+                                    {isLogin ? 'Create an account' : 'Already have an account?'}
+                                </button>
+                            </div>
+                            <button
+                                className="mt-4 bg-blue-500 text-white p-3 rounded w-full hover:bg-blue-600 transition duration-300"
+                                onClick={() => setShowLogin(false)}
+                            >
+                                Back to shortening URLs
+                            </button>
+                        </div>
+                    ) : (
+                        <div>
+                            <h1 className="text-3xl font-bold mb-6 text-center">URL Shortener</h1>
+                            {user && (
+                                <p className="text-left text-gray-700 mb-4">Logged in as <span className="font-bold">{user.username}</span></p>
+                            )}
+                            <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+                                <div className="mb-4">
+                                    <label className="block text-gray-700">Original URL</label>
+                                    <input
+                                        type="url"
+                                        className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={originalUrl}
+                                        onChange={(e) => setOriginalUrl(e.target.value)}
+                                    />
+                                </div>
+                                <div className="mb-4">
+                                    <label className="block text-gray-700">Random Alias Length (5-10)</label>
+                                    <input
+                                        type="number"
+                                        min="5"
+                                        max="10"
+                                        className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={length}
+                                        onChange={(e) => setLength(Math.max(5, Math.min(10, Number(e.target.value))))}
+                                    />
+                                </div>
+                                <div className="mb-4">
+                                <button
+                                    className="bg-gray-200 text-black p-3 rounded w-full hover:bg-gray-300 transition duration-300"
+                                    onClick={() => setShowMoreOptions(!showMoreOptions)}
+                                >
+                                    More Options
+                                </button>
+                                {showMoreOptions && (
+                                <div className="mt-4">
+                                    <div className="mb-4">
+                                        <label className="block text-gray-700">Custom Alias (optional)</label>
+                                            <input
+                                               type="text"
+                                                className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                value={customAlias}
+                                                onChange={(e) => setCustomAlias(e.target.value)}
+                                            />
+                                    </div>
+                                <div className="mb-4">
+                                    <label className="block text-gray-700">Use Max Uses</label>
+                                    <button
+                                       className={`mr-2 p-2 rounded ${useMaxUses ? 'bg-blue-500 text-white' : 'bg-gray-200 text-black'}`}
+                                        onClick={() => setUseMaxUses(!useMaxUses)}
+                                    >
+                                        {useMaxUses ? 'Enabled' : 'Disabled'}
+                                    </button>
+                                    {useMaxUses && (
+                                        <input
+                                            type="number"
+                                            className="w-full p-3 border rounded mt-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={maxUses}
+                                            onChange={(e) => setMaxUses(Number(e.target.value))}
+                                        />
+                                    )}
+                                </div>
+                                <div className="mb-4">
+                                    <label className="block text-gray-700">Use Expiry Date</label>
+                                    <button
+                                        className={`mr-2 p-2 rounded ${useExpiryDate ? 'bg-blue-500 text-white' : 'bg-gray-200 text-black'}`}
+                                        onClick={() => setUseExpiryDate(!useExpiryDate)}
+                                    >
+                                        {useExpiryDate ? 'Enabled' : 'Disabled'}
+                                    </button>
+                                    {useExpiryDate && (
+                                        <input
+                                            type="datetime-local"
+                                            className="w-full p-3 border rounded mt-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={expiryDate}
+                                            onChange={(e) => setExpiryDate(e.target.value)}
+                                        />
+                                    )}
+                                        </div>
+                                    </div>
+                                    )}
+                                </div>
+
+                                <button
+                                    className="bg-blue-500 text-white p-3 rounded w-full hover:bg-blue-600 transition duration-300"
+                                    onClick={handleShortenUrl}
+                                >
+                                    Shorten URL
+                                </button>
+                                {message && <p className="text-red-500 mt-4">{message}</p>}
+                            </div>
+                            <h2 className="text-2xl font-bold mb-4 text-left">Shortened URLs</h2>
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full bg-white rounded-lg shadow-md">
+                                    <thead>
+                                        <tr>
+                                            <th className="py-2 px-4 border-b">Original URL</th>
+                                            <th className="py-2 px-4 border-b">Short URL</th>
+                                            <th className="py-2 px-4 border-b">QR Code</th>
+                                            <th className="py-2 px-4 border-b">Download QR</th>
+                                            <th className="py-2 px-4 border-b">Click Count</th>
+                                            <th className="py-2 px-4 border-b">Max Uses</th>
+                                            <th className="py-2 px-4 border-b">Expiry Date</th>
+                                            <th className="py-2 px-4 border-b">Delete</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {shortenedUrls.map((entry, index) => (
+                                            <tr key={index}>
+                                                <td className="py-2 px-4 border-b">
+                                                    <a
+                                                        href={entry.originalUrl}
+                                                        target="_blank"
+                                                        className="text-blue-500"
+                                                    >
+                                                        {entry.originalUrl.length > 20 ? `${entry.originalUrl.substring(0, 20)}...` : entry.originalUrl}
+                                                    </a>
+                                                </td>
+                                                <td className="py-2 px-4 border-b">
+                                                    <a
+                                                        href={entry.shortUrl}
+                                                        className="text-blue-500"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            handleLinkClick(index);
+                                                            window.location.href = entry.originalUrl;
+                                                        }}
+                                                    >
+                                                        {entry.shortUrl}
+                                                    </a>
+                                                </td>
+                                                <td className="py-2 px-4 border-b">
+                                                    <img 
+                                                        src={entry.qrCodeUrl} 
+                                                        alt={`QR code for ${entry.originalUrl}`} 
+                                                        className="cursor-pointer" 
+                                                        onClick={() => handleQrCodeClick(entry.qrCodeUrl)} 
+                                                    />
+                                                </td>
+                                                <td className="py-2 px-4 border-b">
+                                                    <button
+                                                        className="bg-green-500 text-white p-2 rounded"
+                                                        onClick={() => downloadQRCode(entry.qrCodeUrl, entry.alias)}
+                                                    >
+                                                        Download
+                                                    </button>
+                                                </td>
+                                                <td className="py-2 px-4 border-b">{entry.clickCount}</td>
+                                                <td className="py-2 px-4 border-b">{entry.maxUses || 'Unlimited'}</td>
+                                                <td className="py-2 px-4 border-b">{entry.expiryDate ? new Date(entry.expiryDate).toLocaleString() : 'Never'}</td>
+                                                <td className="py-2 px-4 border-b">
+                                                    <button
+                                                        className="bg-red-500 text-white p-2 rounded"
+                                                        onClick={() => handleDeleteUrl(index)}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {user && (
+                                <button
+                                    className="bg-red-500 text-white p-3 rounded mt-6 w-full hover:bg-red-600 transition duration-300"
+                                    onClick={handleLogout}
+                                >
+                                    Logout
+                                </button>
+                            )}
+                            {qrCodePopup && (
+                                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                                    <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+                                        <img src={qrCodePopup} alt="QR Code" className="w-full h-auto" />
+                                        <button
+                                            className="bg-red-500 text-white p-2 rounded mt-4 w-full hover:bg-red-600 transition duration-300"
+                                            onClick={closeQrCodePopup}
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+ 
+        ReactDOM.render(<App />, document.getElementById('root'));
+ 
+        // Обработка на пренасочването
+        const handleRedirection = () => {
+            const path = window.location.pathname.substring(1);
+            if (path) {
+                const storedUsers = JSON.parse(localStorage.getItem('users')) || [];
+                for (const user of storedUsers) {
+                    const storedUrls = JSON.parse(localStorage.getItem(user.username)) || [];
+                    const entry = storedUrls.find(url => url.alias === path);
+                    if (entry) {
+                        if (!entry.expiryDate || new Date().getTime() <= entry.expiryDate) {
+                            window.location.href = entry.originalUrl;
+                        } else {
+                            alert('This URL has expired.');
+                        }
+                        break;
+                    }
+                }
+            }
+        };
+ 
+        window.onload = handleRedirection;
+    </script>
+    
+</body>
+<footer class="text-center w-full max-w-4xl">
+    <h1 class="text-2xl font-bold mb-8">How to USE</h1>
+    <div class="flex flex-col items-center space-y-8">
+        <div class="bg-white rounded-full p-4 w-48 h-48 flex flex-col items-center justify-center">
+            <i class="fas fa-window-maximize text-4xl text-green-500 mb-2"></i>
+            <h2 class="text-lg font-semibold mb-1">Step 1</h2>
+            <p class="text-gray-600 text-sm">Copy the site URL you want to shorten.</p>
+        </div>
+        <div class="bg-white rounded-full p-4 w-48 h-48 flex flex-col items-center justify-center">
+            <i class="fas fa-clipboard-check text-4xl text-green-500 mb-2"></i>
+            <h2 class="text-lg font-semibold mb-1">Step 2</h2>
+            <p class="text-gray-600 text-sm">Paste the URL in the provided input field and "click" the "Shorten URL" button.</p>
+        </div>
+        <div class="bg-white rounded-full p-4 w-48 h-48 flex flex-col items-center justify-center">
+            <i class="fas fa-clipboard text-4xl text-green-500 mb-2"></i>
+            <h2 class="text-lg font-semibold mb-1">Step 3</h2>
+            <p class="text-gray-600 text-sm">"Click" the "Short URL" link to copy the generated shortened url.</p>
+        </div>
+    </div>
+</footer>
+</html>
