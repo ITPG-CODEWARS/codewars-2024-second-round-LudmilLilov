@@ -1,0 +1,19 @@
+{
+  "name": "posleden_url",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "AppStart": "nodemon server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.20.3",
+    "cors": "^2.8.5",
+    "ejs": "^3.1.10",
+    "express": "^4.21.1",
+    "nodemon": "^3.1.7"
+  },
+  "description": ""
+}
